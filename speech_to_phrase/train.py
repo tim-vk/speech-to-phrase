@@ -68,26 +68,29 @@ async def train(
 
     # Create intents
     intents = _create_intents(model, settings, things)
+    if intents is {}:
+        if model.type == ModelType.KALDI:
+            lexicon = LexiconDatabase(settings.models_dir / model.id / "lexicon.db")
+            fst = _create_intents_fst(model, lexicon, intents)
+            await train_kaldi(model, settings, lexicon, fst)
+        elif model.type == ModelType.COQUI_STT:
+            lexicon = LexiconDatabase()
+            fst = _create_intents_fst(model, lexicon, intents)
+            await train_coqui_stt(model, settings, fst)
+        else:
+            raise TrainingError(f"Unexpected model type for {model.id}: {model.type}")
 
-    if model.type == ModelType.KALDI:
-        lexicon = LexiconDatabase(settings.models_dir / model.id / "lexicon.db")
-        fst = _create_intents_fst(model, lexicon, intents)
-        await train_kaldi(model, settings, lexicon, fst)
-    elif model.type == ModelType.COQUI_STT:
-        lexicon = LexiconDatabase()
-        fst = _create_intents_fst(model, lexicon, intents)
-        await train_coqui_stt(model, settings, fst)
+
+        # Write training info
+        with open(training_info_path, "w", encoding="utf-8") as training_info_file:
+            json.dump(
+                asdict(training_info),
+                training_info_file,
+            )
+
+        _LOGGER.info("Finished training: %s", model.id)
     else:
-        raise TrainingError(f"Unexpected model type for {model.id}: {model.type}")
-
-    # Write training info
-    with open(training_info_path, "w", encoding="utf-8") as training_info_file:
-        json.dump(
-            asdict(training_info),
-            training_info_file,
-        )
-
-    _LOGGER.info("Finished training: %s", model.id)
+        _LOGGER.warning("Nothing to train. Add intents and retrain.")
 
 
 # -----------------------------------------------------------------------------
